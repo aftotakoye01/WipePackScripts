@@ -1,4 +1,4 @@
--- FIREBASE COMBO COCONUT - ИДЕАЛЬНАЯ ВЕРСИЯ
+-- FIREBASE COMBO COCONUT - С ЗАМОРОЗКОЙ КОКОСОВ
 -- Запускается на каждом из 5 аккаунтов
 
 local ACCOUNT_ID = 2 -- <-- ИЗМЕНИТЬ ДЛЯ КАЖДОГО АККАУНТА (1,2,3,4,5)
@@ -14,40 +14,46 @@ local FIREBASE_URL = "https://coconutcombo-363b6-default-rtdb.europe-west1.fireb
 local FIREBASE_SECRET = "D1rn5TSyMvE84thM8YsSBvEDuNCznVD18Tfg3ZT8"
 
 -- ==============================================
--- ТВОИ ПЕРЕМЕННЫЕ (из идеального скрипта)
+-- ТВОИ ОРИГИНАЛЬНЫЕ ПЕРЕМЕННЫЕ
 -- ==============================================
 local lastValue = -1
 local coconutActive = false
 local coconutLostTime = nil
+local sentValues = {}
 local currentAccessory = "none"
-local hasCanister = false
-local hasPorcelain = false
 local myTurn = false
 local hasSpawnedCombo = false
-
--- Значения для спавна кокосов
-local spawnValues = {5, 11, 17, 23}
+local canSpawnAfter15 = false -- ✅ РАЗРЕШЕНИЕ НА СПАВН ПОСЛЕ 15 СЕКУНД
 
 -- ==============================================
 -- ФУНКЦИИ FIREBASE
 -- ==============================================
 function SetFirebase(path, data)
-    pcall(function()
+    local success, result = pcall(function()
         local url = string.format("%s%s.json?auth=%s", FIREBASE_URL, path, FIREBASE_SECRET)
         local body = HttpService:JSONEncode(data)
-        HttpService:RequestAsync({
+        
+        local response = HttpService:RequestAsync({
             Url = url,
             Method = "PUT",
             Headers = {["Content-Type"] = "application/json"},
             Body = body
         })
+        
+        return response.Success
     end)
+    return success
 end
 
 function GetFirebase(path)
     local success, result = pcall(function()
         local url = string.format("%s%s.json?auth=%s", FIREBASE_URL, path, FIREBASE_SECRET)
-        local response = HttpService:RequestAsync({Url = url, Method = "GET"})
+        
+        local response = HttpService:RequestAsync({
+            Url = url,
+            Method = "GET"
+        })
+        
         if response.Success then
             return HttpService:JSONDecode(response.Body)
         end
@@ -56,7 +62,7 @@ function GetFirebase(path)
 end
 
 -- ==============================================
--- ТВОИ ФУНКЦИИ (из идеального скрипта)
+-- ТВОИ ОРИГИНАЛЬНЫЕ ФУНКЦИИ
 -- ==============================================
 function EquipCanister()
     local args = {
@@ -68,8 +74,6 @@ function EquipCanister()
     }
     game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("ItemPackageEvent"):InvokeServer(unpack(args))
     currentAccessory = "canister"
-    hasCanister = true
-    hasPorcelain = false
     print("✅ Аккаунт " .. ACCOUNT_ID .. " Coconut Canister")
 end
 
@@ -83,19 +87,21 @@ function EquipPorcelain()
     }
     game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("ItemPackageEvent"):InvokeServer(unpack(args))
     currentAccessory = "porcelain"
-    hasPorcelain = true
-    hasCanister = false
     print("✅ Аккаунт " .. ACCOUNT_ID .. " Porcelain")
 end
 
-function SpawnCoconut()
+function SpawnCoconut(isFromTimer)
     local args = {
         {
             Name = "Coconut"
         }
     }
     game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("PlayerActivesCommand"):FireServer(unpack(args))
-    print("🥥 Аккаунт " .. ACCOUNT_ID .. " спавн кокоса")
+    if isFromTimer then
+        print("🥥 Аккаунт " .. ACCOUNT_ID .. " спавн кокоса (по таймеру 15с)")
+    else
+        print("🥥 Аккаунт " .. ACCOUNT_ID .. " спавн кокоса")
+    end
 end
 
 function IsComboCoconutPresent()
@@ -116,7 +122,8 @@ pcall(function()
     SetFirebase("accounts/" .. ACCOUNT_ID, {
         ready = false,
         combo_value = 0,
-        online = true
+        online = true,
+        can_spawn = false -- ✅ Флаг разрешения на спавн после 15 сек
     })
     
     local turns = GetFirebase("turns")
@@ -145,7 +152,30 @@ function NextTurn()
 end
 
 -- ==============================================
--- ТВОЙ МОНИТОРИНГ КОМБО (из идеального скрипта)
+-- МОНИТОРИНГ ОЧЕРЕДИ (КТО МОЖЕТ СПАВНИТЬ ПОСЛЕ 15 СЕК)
+-- ==============================================
+spawn(function()
+    while true do
+        local currentTurn = GetCurrentTurn()
+        myTurn = (currentTurn == ACCOUNT_ID)
+        
+        -- Разрешаем спавн после 15 сек ТОЛЬКО тому, чей сейчас ход
+        if myTurn then
+            SetFirebase("accounts/" .. ACCOUNT_ID .. "/can_spawn", true)
+            -- Снимаем разрешение у всех остальных
+            for i = 1, 5 do
+                if i ~= ACCOUNT_ID then
+                    SetFirebase("accounts/" .. i .. "/can_spawn", false)
+                end
+            end
+        end
+        
+        task.wait(1)
+    end
+end)
+
+-- ==============================================
+-- ТВОЙ МОНИТОРИНГ КОМБО
 -- ==============================================
 spawn(function()
     while true do
@@ -159,7 +189,7 @@ spawn(function()
             coconutLostTime = tick()
             print("🥥 Аккаунт " .. ACCOUNT_ID .. " комбо исчезло")
             
-            -- Если это был наш спавн, через 15 сек отмечаем готовность
+            -- Если это был наш спавн, через 15 сек отметим готовность
             if GetCurrentTurn() == ACCOUNT_ID and hasSpawnedCombo then
                 task.wait(15)
                 SetFirebase("accounts/" .. ACCOUNT_ID .. "/ready", true)
@@ -172,23 +202,30 @@ spawn(function()
 end)
 
 -- ==============================================
--- ТВОЙ ТАЙМЕР НА 15 СЕКУНД (из идеального скрипта)
+-- ТАЙМЕР НА 15 СЕКУНД (ТОЛЬКО ДЛЯ ТЕКУЩЕГО В ОЧЕРЕДИ)
 -- ==============================================
 spawn(function()
     while true do
-        if not coconutActive and coconutLostTime and tick() - coconutLostTime >= 15 then
-            SpawnCoconut()
+        -- Проверяем: прошло 15 сек, комбо не активно, И МЫ ИМЕЕМ РАЗРЕШЕНИЕ
+        local canSpawn = GetFirebase("accounts/" .. ACCOUNT_ID .. "/can_spawn")
+        
+        if not coconutActive and coconutLostTime and tick() - coconutLostTime >= 15 and canSpawn then
+            SpawnCoconut(true) -- true = это спавн от таймера
             if currentAccessory ~= "canister" then
                 EquipCanister()
             end
             coconutLostTime = nil
+            
+            -- Снимаем разрешение после спавна
+            SetFirebase("accounts/" .. ACCOUNT_ID .. "/can_spawn", false)
+            print("🔒 Аккаунт " .. ACCOUNT_ID .. " заморозил спавн до следующего хода")
         end
         task.wait(1)
     end
 end)
 
 -- ==============================================
--- СТРАХОВКА КАЖДЫЕ 5 СЕКУНД (из идеального скрипта)
+-- СТРАХОВОЧНЫЙ МЕХАНИЗМ (каждые 5 секунд)
 -- ==============================================
 spawn(function()
     while true do
@@ -237,7 +274,7 @@ spawn(function()
 end)
 
 -- ==============================================
--- ТВОЯ ОСНОВНАЯ ЛОГИКА (из идеального скрипта)
+-- ТВОЯ ОСНОВНАЯ ЛОГИКА
 -- ==============================================
 require(ReplicatedStorage.Events).ClientListen("PlayerAbilityEvent", function(data)
     for tag, info in pairs(data) do
@@ -245,25 +282,30 @@ require(ReplicatedStorage.Events).ClientListen("PlayerAbilityEvent", function(da
             if info.Action == "Update" then
                 local value = info.Values and info.Values[1] or 0
                 
-                -- Обновляем значение в Firebase
                 SetFirebase("accounts/" .. ACCOUNT_ID .. "/combo_value", value)
                 
-                -- Логика переключения рюкзаков
-                if value < 39 and not hasCanister then
-                    EquipCanister()
-                elseif value == 39 and not hasPorcelain then
-                    EquipPorcelain()
+                if value < 39 then
+                    if currentAccessory ~= "canister" then
+                        EquipCanister()
+                    end
+                elseif value == 39 then
+                    if currentAccessory ~= "porcelain" and not sentValues[39] then
+                        EquipPorcelain()
+                        sentValues[39] = true
+                        print("🎯 Аккаунт " .. ACCOUNT_ID .. " ДОСТИГ 39!")
+                    end
                 end
                 
                 if value ~= lastValue then
                     print("🥥 Аккаунт " .. ACCOUNT_ID .. " комбо значение:", value)
                     
-                    -- Спавн кокосов на определенных значениях
-                    for _, spawnVal in pairs(spawnValues) do
-                        if value == spawnVal then
-                            SpawnCoconut()
-                            break
-                        end
+                    if value == 0 and not sentValues[0] then
+                        sentValues[0] = true
+                    end
+                    
+                    if (value == 5 or value == 11 or value == 16 or value == 21) and not sentValues[value] then
+                        SpawnCoconut()
+                        sentValues[value] = true
                     end
                     
                     lastValue = value
@@ -282,5 +324,5 @@ print("========================================")
 print("📡 Firebase подключен")
 print("🎯 Текущий ход: Аккаунт " .. GetCurrentTurn())
 print("🔄 Очередь: 1 → 2 → 3 → 4 → 5 → 1...")
-print("📊 Спавн кокосов на:", table.concat(spawnValues, ", "))
+print("🔒 Спавн после 15 сек ТОЛЬКО у текущего в очереди")
 print("========================================")
