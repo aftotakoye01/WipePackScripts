@@ -1,4 +1,3 @@
-```lua
 local ACCOUNT_ID = 2
 
 local Players = game:GetService("Players")
@@ -165,4 +164,3 @@ require(ReplicatedStorage.Events).ClientListen("PlayerAbilityEvent", function(da
 end)
 
 updateCounterDisplay()
-```
