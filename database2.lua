@@ -125,14 +125,13 @@ end)
 spawn(function()
     while true do
         if not coconutActive and coconutLostTime and tick() - coconutLostTime >= 15 then
-            -- Проверяем И очередь, И значение 39
             if comboCounter == ACCOUNT_ID and lastValue == 39 then
-                print("🎯 Аккаунт " .. ACCOUNT_ID .. " кидает КОМБО (очередь " .. comboCounter .. ", значение 39)")
+                print("🎯 Аккаунт " .. ACCOUNT_ID .. " кидает КОМБО (очередь " .. comboCounter .. ")")
                 SpawnCoconut(true)
                 hasSpawnedCombo = true
                 EquipCanister()
             else
-                print("⏳ Аккаунт " .. ACCOUNT_ID .. " ждет (очередь " .. comboCounter .. ", значение " .. lastValue .. ")")
+                print("⏳ Аккаунт " .. ACCOUNT_ID .. " ждет своей очереди (сейчас " .. comboCounter .. ")")
             end
             coconutLostTime = nil
         end
@@ -155,10 +154,12 @@ require(ReplicatedStorage.Events).ClientListen("PlayerAbilityEvent", function(da
             if info.Action == "Update" then
                 local value = info.Values and info.Values[1] or 0
                 
+                -- ФАРФОР ВСЕГДА НА 39 (независимо от очереди)
                 if value == 39 and not hasPorcelain then
                     EquipPorcelain()
                 end
                 
+                -- Канистра только в свою очередь (кроме 39)
                 if comboCounter == ACCOUNT_ID and value < 39 and not hasCanister then
                     EquipCanister()
                 end
@@ -176,7 +177,7 @@ end)
 updateCounterDisplay()
 print("========================================")
 print("✅ Аккаунт " .. ACCOUNT_ID .. " запущен")
-print("📊 Счетчик комбо:", comboCounter)
-print("🎯 Твой ход когда счетчик = " .. ACCOUNT_ID .. " И значение = 39")
+print("📊 Счетчик комбо показывает текущую очередь")
+print("🎯 Твой ход когда счетчик = " .. ACCOUNT_ID)
 print("🍶 Фарфор надевается на 39 ВСЕГДА")
 print("========================================")
