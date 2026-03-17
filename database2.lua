@@ -11,9 +11,10 @@ local coconutLostTime = nil
 local currentAccessory = "none"
 local hasCanister = false
 local hasPorcelain = false
-local hasSpawnedCombo = false
 local comboCounter = 0
+local spawnTimer = nil
 
+-- Интерфейс
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ComboCounter"
 screenGui.Parent = game:GetService("CoreGui")
@@ -63,6 +64,7 @@ function EquipCanister()
     currentAccessory = "canister"
     hasCanister = true
     hasPorcelain = false
+    print("🥥 Канистра надета")
 end
 
 function EquipPorcelain()
@@ -77,6 +79,7 @@ function EquipPorcelain()
     currentAccessory = "porcelain"
     hasPorcelain = true
     hasCanister = false
+    print("🍶 Фарфор надет")
 end
 
 function SpawnCoconut(isCombo)
@@ -88,6 +91,11 @@ function SpawnCoconut(isCombo)
     game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("PlayerActivesCommand"):FireServer(unpack(args))
     if isCombo then
         print("✅ Аккаунт " .. ACCOUNT_ID .. " КОМБО КОКОС (очередь " .. comboCounter .. ")")
+        -- Через 11 секунд кидаем обычный кокос для обновления значения
+        task.spawn(function()
+            task.wait(11)
+            SpawnCoconut(false)
+        end)
     else
         print("🥥 Аккаунт " .. ACCOUNT_ID .. " обычный кокос")
     end
@@ -104,80 +112,98 @@ function IsComboCoconutPresent()
     return false
 end
 
+-- Мониторинг появления/исчезновения комбо для счётчика очереди
 spawn(function()
     while true do
         local present = IsComboCoconutPresent()
         if present and not coconutActive then
             coconutActive = true
             coconutLostTime = nil
+            print("🌟 Комбо появилось")
         elseif not present and coconutActive then
             coconutActive = false
             coconutLostTime = tick()
             comboCounter = comboCounter + 1
             if comboCounter > 5 then comboCounter = 1 end
             updateCounterDisplay()
-            print("📊 Счетчик комбо:", comboCounter, "Очередь аккаунта", ACCOUNT_ID, "→", comboCounter == ACCOUNT_ID and "ТВОЙ ХОД!" or "ЖДИ")
+            print("📊 Счетчик комбо:", comboCounter)
         end
         task.wait(0.5)
     end
 end)
 
-spawn(function()
-    while true do
-        if not coconutActive and coconutLostTime and tick() - coconutLostTime >= 15 then
-            if comboCounter == ACCOUNT_ID and lastValue == 39 then
-                print("🎯 Аккаунт " .. ACCOUNT_ID .. " кидает КОМБО (очередь " .. comboCounter .. ")")
-                SpawnCoconut(true)
-                hasSpawnedCombo = true
-                EquipCanister()
-            else
-                print("⏳ Аккаунт " .. ACCOUNT_ID .. " ждет своей очереди (сейчас " .. comboCounter .. ")")
-            end
-            coconutLostTime = nil
-        end
-        task.wait(1)
+-- Функция запуска 15-секундного таймера на спавн комбо
+local function startSpawnTimer()
+    if spawnTimer then
+        task.cancel(spawnTimer)
+        spawnTimer = nil
     end
-end)
-
-spawn(function()
-    while true do
-        if comboCounter == ACCOUNT_ID and lastValue ~= 39 and currentAccessory ~= "canister" then
-            EquipCanister()
+    spawnTimer = task.spawn(function()
+        task.wait(15)
+        -- Проверяем, что условия всё ещё выполнены
+        if lastValue == 39 and comboCounter == ACCOUNT_ID then
+            print("🎯 Аккаунт " .. ACCOUNT_ID .. " кидает КОМБО по таймеру")
+            SpawnCoconut(true)
         end
-        task.wait(5)
-    end
-end)
+        spawnTimer = nil
+    end)
+end
 
+-- Основной обработчик событий комбо
 require(ReplicatedStorage.Events).ClientListen("PlayerAbilityEvent", function(data)
     for tag, info in pairs(data) do
         if tag == "Combo Coconuts" or tag == "ComboCoconuts" then
             if info.Action == "Update" then
                 local value = info.Values and info.Values[1] or 0
-                
-                -- ФАРФОР ВСЕГДА НА 39 (независимо от очереди)
+
+                -- Сброс таймера, если значение упало ниже 39
+                if value < 39 and spawnTimer then
+                    task.cancel(spawnTimer)
+                    spawnTimer = nil
+                end
+
+                -- Фарфор надевается всегда на 39
                 if value == 39 and not hasPorcelain then
                     EquipPorcelain()
                 end
-                
-                -- Канистра только в свою очередь (кроме 39)
-                if comboCounter == ACCOUNT_ID and value < 39 and not hasCanister then
+
+                -- Канистра надевается при значении <39
+                if value < 39 and not hasCanister then
                     EquipCanister()
                 end
-                
-                if value == 5 or value == 11 or value == 17 or value == 23 then
+
+                -- Обычные кокосы на 11, 17, 23 (5 убрали)
+                if value == 11 or value == 17 or value == 23 then
                     SpawnCoconut(false)
                 end
-                
+
+                -- Если достигли 39, не запущен ли таймер, и наша очередь
+                if value == 39 and comboCounter == ACCOUNT_ID and not spawnTimer then
+                    startSpawnTimer()
+                end
+
                 lastValue = value
             end
         end
     end
 end)
 
+-- Страховка канистры (каждые 5 секунд)
+spawn(function()
+    while true do
+        if lastValue ~= 39 and currentAccessory ~= "canister" then
+            EquipCanister()
+        end
+        task.wait(5)
+    end
+end)
+
 updateCounterDisplay()
 print("========================================")
 print("✅ Аккаунт " .. ACCOUNT_ID .. " запущен")
-print("📊 Счетчик комбо показывает текущую очередь")
-print("🎯 Твой ход когда счетчик = " .. ACCOUNT_ID)
-print("🍶 Фарфор надевается на 39 ВСЕГДА")
+print("📊 Счетчик комбо:", comboCounter)
+print("🎯 Комбо кидается через 15 сек после готовности (39 + очередь)")
+print("🍶 Фарфор надевается на 39 всегда")
+print("🥥 Канистра надевается при <39 всегда")
+print("⏱️ Через 11 сек после комбо кидается обычный кокос (обновляет значение)")
 print("========================================")
