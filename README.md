@@ -1,2 +1,2 @@
-# coconutcombotest
-username_01
+# here you can get some private bss scripts
+/usercode01
