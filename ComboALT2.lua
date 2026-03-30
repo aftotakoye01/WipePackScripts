@@ -91,7 +91,6 @@ function SpawnCoconut(isCombo)
     game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("PlayerActivesCommand"):FireServer(unpack(args))
     if isCombo then
         print("✅ Аккаунт " .. ACCOUNT_ID .. " КОМБО КОКОС (очередь " .. comboCounter .. ")")
-        -- Через 11 секунд кидаем обычный кокос для обновления значения
         task.spawn(function()
             task.wait(11)
             SpawnCoconut(false)
@@ -112,7 +111,7 @@ function IsComboCoconutPresent()
     return false
 end
 
--- Мониторинг появления/исчезновения комбо для счётчика очереди
+-- Мониторинг появления/исчезновения комбо для счётчика очереди (4 аккаунта)
 spawn(function()
     while true do
         local present = IsComboCoconutPresent()
@@ -124,7 +123,7 @@ spawn(function()
             coconutActive = false
             coconutLostTime = tick()
             comboCounter = comboCounter + 1
-            if comboCounter > 5 then comboCounter = 1 end
+            if comboCounter > 4 then comboCounter = 1 end
             updateCounterDisplay()
             print("📊 Счетчик комбо:", comboCounter)
         end
@@ -132,7 +131,6 @@ spawn(function()
     end
 end)
 
--- Функция запуска 15-секундного таймера на спавн комбо
 local function startSpawnTimer()
     if spawnTimer then
         task.cancel(spawnTimer)
@@ -140,7 +138,6 @@ local function startSpawnTimer()
     end
     spawnTimer = task.spawn(function()
         task.wait(15)
-        -- Проверяем, что условия всё ещё выполнены
         if lastValue == 39 and comboCounter == ACCOUNT_ID then
             print("🎯 Аккаунт " .. ACCOUNT_ID .. " кидает КОМБО по таймеру")
             SpawnCoconut(true)
@@ -149,35 +146,29 @@ local function startSpawnTimer()
     end)
 end
 
--- Основной обработчик событий комбо
 require(ReplicatedStorage.Events).ClientListen("PlayerAbilityEvent", function(data)
     for tag, info in pairs(data) do
         if tag == "Combo Coconuts" or tag == "ComboCoconuts" then
             if info.Action == "Update" then
                 local value = info.Values and info.Values[1] or 0
 
-                -- Сброс таймера, если значение упало ниже 39
                 if value < 39 and spawnTimer then
                     task.cancel(spawnTimer)
                     spawnTimer = nil
                 end
 
-                -- Фарфор надевается всегда на 39
                 if value == 39 and not hasPorcelain then
                     EquipPorcelain()
                 end
 
-                -- Канистра надевается при значении <39
                 if value < 39 and not hasCanister then
                     EquipCanister()
                 end
 
-                -- Обычные кокосы на 11, 17, 23 (5 убрали)
                 if value == 11 or value == 17 or value == 23 then
                     SpawnCoconut(false)
                 end
 
-                -- Если достигли 39, не запущен ли таймер, и наша очередь
                 if value == 39 and comboCounter == ACCOUNT_ID and not spawnTimer then
                     startSpawnTimer()
                 end
@@ -188,7 +179,6 @@ require(ReplicatedStorage.Events).ClientListen("PlayerAbilityEvent", function(da
     end
 end)
 
--- Страховка канистры (каждые 5 секунд)
 spawn(function()
     while true do
         if lastValue ~= 39 and currentAccessory ~= "canister" then
@@ -201,9 +191,10 @@ end)
 updateCounterDisplay()
 print("========================================")
 print("✅ Аккаунт " .. ACCOUNT_ID .. " запущен")
-print("📊 Счетчик комбо:", comboCounter)
+print("📊 Счетчик комбо (1-4):", comboCounter)
 print("🎯 Комбо кидается через 15 сек после готовности (39 + очередь)")
 print("🍶 Фарфор надевается на 39 всегда")
 print("🥥 Канистра надевается при <39 всегда")
-print("⏱️ Через 11 сек после комбо кидается обычный кокос (обновляет значение)")
+print("⏱️ Через 11 сек после комбо кидается обычный кокос")
+print("🔄 Очередь: 1 → 2 → 3 → 4 → 1...")
 print("========================================")
