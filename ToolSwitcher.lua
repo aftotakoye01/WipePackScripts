@@ -29,7 +29,7 @@ function equipDarkScythe()
 end
 
 UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.V then
+    if input.KeyCode == Enum.KeyCode.R then
         if currentTool == 1 then
             equipGummyballer()
             currentTool = 2
